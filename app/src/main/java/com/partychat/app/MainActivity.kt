@@ -31,6 +31,7 @@ import androidx.webkit.WebViewFeature
 class MainActivity : ComponentActivity() {
 
     private lateinit var webView: WebView
+    private var pocketOverlay: android.view.View? = null
     private var pendingWebPermission: PermissionRequest? = null
 
     private val permissionLauncher =
@@ -250,6 +251,61 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    // ---------------------------------------------------------------- Pocket mode
+    // Android starves the page when the screen is really off, which makes your voice
+    // choppy. Pocket mode keeps the screen "on" but fully black at minimum brightness
+    // (black pixels are off on OLED screens, so it costs very little battery).
+
+    private fun enterPocketMode() {
+        if (pocketOverlay != null) return
+        val overlay = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            isClickable = true
+            isFocusable = true
+            val hint = android.widget.TextView(this@MainActivity).apply {
+                text = "Pocket mode — double-tap to exit"
+                setTextColor(0xFF202020.toInt())
+                textSize = 14f
+            }
+            addView(hint, android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.CENTER))
+            val detector = android.view.GestureDetector(this@MainActivity,
+                object : android.view.GestureDetector.SimpleOnGestureListener() {
+                    override fun onDown(e: android.view.MotionEvent) = true
+                    override fun onDoubleTap(e: android.view.MotionEvent): Boolean {
+                        exitPocketMode(); return true
+                    }
+                })
+            setOnTouchListener { _, ev -> detector.onTouchEvent(ev) }
+        }
+        addContentView(overlay, android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT))
+        pocketOverlay = overlay
+        actionBar?.hide()
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+            hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
+    private fun exitPocketMode() {
+        val overlay = pocketOverlay ?: return
+        (overlay.parent as? android.view.ViewGroup)?.removeView(overlay)
+        pocketOverlay = null
+        actionBar?.show()
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.attributes = window.attributes.apply {
+            screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+            .show(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+    }
+
     // ---------------------------------------------------------------- Menu
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -260,7 +316,8 @@ class MainActivity : ComponentActivity() {
         menu.add(0, M_SPEAKER, 4, "Speaker when no headset").setCheckable(true).isChecked = Prefs.speakerFallback(this)
         menu.add(0, M_REROUTE, 5, "Fix audio routing now")
         menu.add(0, M_BATTERY, 6, "Battery optimization settings")
-        menu.add(0, M_LEAVE, 7, "Leave & close")
+        menu.add(0, M_POCKET, 7, "Pocket mode (black screen)")
+        menu.add(0, M_LEAVE, 8, "Leave & close")
         return true
     }
 
@@ -294,6 +351,7 @@ class MainActivity : ComponentActivity() {
             } catch (_: ActivityNotFoundException) {
                 startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
             }
+            M_POCKET -> enterPocketMode()
             M_LEAVE -> leaveParty()
             else -> return super.onOptionsItemSelected(item)
         }
@@ -309,6 +367,7 @@ class MainActivity : ComponentActivity() {
         private const val M_REROUTE = 6
         private const val M_BATTERY = 7
         private const val M_LEAVE = 8
+        private const val M_POCKET = 9
 
         /** Sites allowed to use the microphone. */
         private val TRUSTED_DOMAINS = listOf(
