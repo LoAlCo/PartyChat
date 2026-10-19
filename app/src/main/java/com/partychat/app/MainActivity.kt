@@ -81,7 +81,13 @@ class MainActivity : ComponentActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun buildWebView(): WebView {
-        val wv = WebView(this)
+        // Always tell the browser engine it's on screen. Otherwise, when the screen turns
+        // off, Chromium throttles the page and your outgoing voice gets choppy.
+        val wv = object : WebView(this) {
+            override fun onWindowVisibilityChanged(visibility: Int) {
+                super.onWindowVisibilityChanged(android.view.View.VISIBLE)
+            }
+        }
 
         wv.settings.apply {
             javaScriptEnabled = true
