@@ -37,8 +37,8 @@ class AudioRouter(context: Context) {
     private val watchdog = object : Runnable {
         override fun run() {
             if (!active) return
-            route()
-            handler.postDelayed(this, 3000)
+            route(force = false)
+            handler.postDelayed(this, 15000)
         }
     }
 
@@ -48,7 +48,7 @@ class AudioRouter(context: Context) {
         am.mode = AudioManager.MODE_IN_COMMUNICATION
         am.registerAudioDeviceCallback(deviceCallback, handler)
         route()
-        handler.postDelayed(watchdog, 3000)
+        handler.postDelayed(watchdog, 15000)
     }
 
     @Suppress("DEPRECATION")
@@ -75,13 +75,13 @@ class AudioRouter(context: Context) {
     }
 
     /** Re-apply the best route now. Safe to call any time. */
-    fun route() {
+    fun route(force: Boolean = true) {
         if (!active) return
         try {
             if (am.mode != AudioManager.MODE_IN_COMMUNICATION) {
                 am.mode = AudioManager.MODE_IN_COMMUNICATION
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) routeModern() else routeLegacy()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) routeModern(force) else if (force) routeLegacy()
         } catch (e: Exception) {
             Log.w(TAG, "route failed", e)
         }
@@ -106,7 +106,7 @@ class AudioRouter(context: Context) {
         else -> "Other device"
     }
 
-    private fun routeModern() {
+    private fun routeModern(force: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
         val devices = am.availableCommunicationDevices
         val headset = devices
@@ -117,7 +117,11 @@ class AudioRouter(context: Context) {
         val target = headset ?: devices.firstOrNull { it.type == fallbackType } ?: return
 
         val current = am.communicationDevice
-        if (current == null || current.id != target.id) {
+        // Background checks only fix a real drift (e.g. stuck on speaker while a headset
+        // is connected). Re-applying the same route restarts the audio path = choppy voice.
+        val needsChange = if (force) current?.id != target.id
+                          else current != null && current.id != target.id
+        if (needsChange) {
             am.setCommunicationDevice(target)
         }
         report(describe(target.type))
