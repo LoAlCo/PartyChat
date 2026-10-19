@@ -323,6 +323,18 @@ class MainActivity : ComponentActivity() {
     def('visibilityState', 'visible');
     def('webkitVisibilityState', 'visible');
     Document.prototype.hasFocus = function () { return true; };
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        var origQuery = navigator.permissions.query.bind(navigator.permissions);
+        navigator.permissions.query = function (desc) {
+          if (desc && (desc.name === 'microphone' || desc.name === 'audio_capture')) {
+            return Promise.resolve({ state: 'granted', status: 'granted', name: desc.name, onchange: null,
+              addEventListener: function () {}, removeEventListener: function () {} });
+          }
+          return origQuery(desc);
+        };
+      }
+    } catch (e) {}
     var block = function (e) { e.stopImmediatePropagation(); };
     ['visibilitychange', 'webkitvisibilitychange', 'freeze'].forEach(function (t) {
       document.addEventListener(t, block, true);

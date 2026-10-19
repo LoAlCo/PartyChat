@@ -48,7 +48,6 @@ class AudioRouter(context: Context) {
         am.mode = AudioManager.MODE_IN_COMMUNICATION
         am.registerAudioDeviceCallback(deviceCallback, handler)
         route()
-        handler.postDelayed(watchdog, 15000)
     }
 
     @Suppress("DEPRECATION")
@@ -119,8 +118,7 @@ class AudioRouter(context: Context) {
         val current = am.communicationDevice
         // Background checks only fix a real drift (e.g. stuck on speaker while a headset
         // is connected). Re-applying the same route restarts the audio path = choppy voice.
-        val needsChange = if (force) current?.id != target.id
-                          else current != null && current.id != target.id
+        val needsChange = current == null || current.type != target.type
         if (needsChange) {
             am.setCommunicationDevice(target)
         }
