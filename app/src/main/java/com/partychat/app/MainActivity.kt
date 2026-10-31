@@ -251,6 +251,25 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    // ---------------------------------------------------------------- Headset helper
+    // The official Xbox app runs party chat fine in the background, but plays it in
+    // Bluetooth "music" mode, so it uses the phone's own mic. The helper forces the
+    // earbuds into "call" mode (mic + audio) and then opens the Xbox app.
+
+    private fun startHeadsetHelper() {
+        if (!hasMic()) { requestNeededPermissions(); return }
+        webView.loadUrl("about:blank")   // don't also be in the party from the website
+        try {
+            PartyService.startHelper(this)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Couldn't start helper: ${e.message}", Toast.LENGTH_LONG).show()
+            return
+        }
+        val launch = packageManager.getLaunchIntentForPackage(XBOX_APP)
+        if (launch != null) startActivity(launch)
+        else Toast.makeText(this, "Xbox app not found — open it yourself", Toast.LENGTH_LONG).show()
+    }
+
     // ---------------------------------------------------------------- Pocket mode
     // Android starves the page when the screen is really off, which makes your voice
     // choppy. Pocket mode keeps the screen "on" but fully black at minimum brightness
@@ -309,6 +328,7 @@ class MainActivity : ComponentActivity() {
     // ---------------------------------------------------------------- Menu
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menu.add(0, M_HELPER, 0, "Headset helper → open Xbox app")
         menu.add(0, M_HOME, 0, "Home")
         menu.add(0, M_RELOAD, 1, "Reload")
         menu.add(0, M_SET_HOME, 2, "Set this page as home")
@@ -352,6 +372,7 @@ class MainActivity : ComponentActivity() {
                 startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
             }
             M_POCKET -> enterPocketMode()
+            M_HELPER -> startHeadsetHelper()
             M_LEAVE -> leaveParty()
             else -> return super.onOptionsItemSelected(item)
         }
@@ -368,6 +389,8 @@ class MainActivity : ComponentActivity() {
         private const val M_BATTERY = 7
         private const val M_LEAVE = 8
         private const val M_POCKET = 9
+        private const val M_HELPER = 10
+        private const val XBOX_APP = "com.microsoft.xboxone.smartglass"
 
         /** Sites allowed to use the microphone. */
         private val TRUSTED_DOMAINS = listOf(

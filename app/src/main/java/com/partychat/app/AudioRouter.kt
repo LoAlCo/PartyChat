@@ -22,6 +22,15 @@ class AudioRouter(context: Context) {
     private val handler = Handler(Looper.getMainLooper())
     private var active = false
 
+    /**
+     * Helper mode: used with the official Xbox app. Forces the Bluetooth headset into
+     * "call" mode (SCO) system-wide, so other apps' voice audio and mic go through it,
+     * and plays silence on the call channel so the phone doesn't drop the link.
+     */
+    var helperMode = false
+    private var keepAlive: android.media.AudioTrack? = null
+    @Volatile private var keepAliveRunning = false
+
     /** If no headset is connected: true = loudspeaker, false = earpiece. */
     var speakerWhenNoHeadset = true
 
@@ -48,6 +57,60 @@ class AudioRouter(context: Context) {
         am.mode = AudioManager.MODE_IN_COMMUNICATION
         am.registerAudioDeviceCallback(deviceCallback, handler)
         route()
+        if (helperMode) {
+            forceScoOn()
+            startKeepAlive()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun forceScoOn() {
+        try {
+            val hasBt = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any {
+                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
+            }
+            if (hasBt) {
+                am.isSpeakerphoneOn = false
+                am.startBluetoothSco()
+                am.isBluetoothScoOn = true
+            }
+        } catch (e: Exception) { Log.w(TAG, "SCO start failed", e) }
+    }
+
+    private fun startKeepAlive() {
+        if (keepAlive != null) return
+        val rate = 16000
+        val min = android.media.AudioTrack.getMinBufferSize(rate,
+            android.media.AudioFormat.CHANNEL_OUT_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT)
+        val track = try {
+            android.media.AudioTrack.Builder()
+                .setAudioAttributes(android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                .setAudioFormat(android.media.AudioFormat.Builder()
+                    .setSampleRate(rate)
+                    .setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO)
+                    .setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT).build())
+                .setBufferSizeInBytes(min * 2)
+                .setTransferMode(android.media.AudioTrack.MODE_STREAM)
+                .build()
+        } catch (e: Exception) { Log.w(TAG, "keep-alive track failed", e); return }
+        keepAlive = track
+        keepAliveRunning = true
+        track.play()
+        Thread {
+            val silence = ShortArray(rate / 50) // 20 ms of silence
+            while (keepAliveRunning) {
+                try { track.write(silence, 0, silence.size) } catch (_: Exception) { break }
+            }
+        }.apply { name = "PartyChat-keepalive"; isDaemon = true; start() }
+    }
+
+    private fun stopKeepAlive() {
+        keepAliveRunning = false
+        try { keepAlive?.stop() } catch (_: Exception) {}
+        try { keepAlive?.release() } catch (_: Exception) {}
+        keepAlive = null
     }
 
     @Suppress("DEPRECATION")
@@ -55,6 +118,11 @@ class AudioRouter(context: Context) {
         if (!active) return
         active = false
         handler.removeCallbacksAndMessages(null)
+        stopKeepAlive()
+        if (helperMode) {
+            @Suppress("DEPRECATION")
+            try { am.stopBluetoothSco(); am.isBluetoothScoOn = false } catch (_: Exception) {}
+        }
         try { am.unregisterAudioDeviceCallback(deviceCallback) } catch (_: Exception) {}
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -70,7 +138,7 @@ class AudioRouter(context: Context) {
 
     private fun scheduleRoute(delayMs: Long) {
         if (!active) return
-        handler.postDelayed({ route() }, delayMs)
+        handler.postDelayed({ route(); if (helperMode) forceScoOn() }, delayMs)
     }
 
     /** Re-apply the best route now. Safe to call any time. */

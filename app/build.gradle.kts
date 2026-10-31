@@ -11,8 +11,8 @@ android {
         applicationId = "com.partychat.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4"
+        versionCode = 6
+        versionName = "1.5"
     }
 
     // A fixed personal signing key, so builds from your PC and from GitHub

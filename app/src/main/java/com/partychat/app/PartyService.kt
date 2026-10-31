@@ -61,6 +61,12 @@ class PartyService : Service() {
             }
         }
 
+        val wantHelper = intent?.action == ACTION_HELPER
+        if (running && router.helperMode != wantHelper) {
+            router.stop()            // switching between website mode and helper mode
+            running = false
+        }
+        router.helperMode = wantHelper
         try {
             ServiceCompat.startForeground(
                 this, NOTIFICATION_ID, buildNotification(),
@@ -152,7 +158,7 @@ class PartyService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notify)
-            .setContentTitle("Party chat mic active")
+            .setContentTitle(if (router.helperMode) "Headset helper on (Xbox app)" else "Party chat mic active")
             .setContentText("Audio: $routeText")
             .setContentIntent(openApp)
             .setOngoing(true)
@@ -177,6 +183,13 @@ class PartyService : Service() {
         private const val NOTIFICATION_ID = 42
         const val ACTION_STOP = "com.partychat.app.STOP"
         const val ACTION_REROUTE = "com.partychat.app.REROUTE"
+        const val ACTION_HELPER = "com.partychat.app.HELPER"
+
+        /** Headset helper for the official Xbox app (no website). */
+        fun startHelper(context: Context) {
+            ContextCompat.startForegroundService(context,
+                Intent(context, PartyService::class.java).setAction(ACTION_HELPER))
+        }
 
         @Volatile var running = false
             private set
