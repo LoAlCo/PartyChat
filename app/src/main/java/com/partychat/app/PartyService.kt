@@ -87,9 +87,8 @@ class PartyService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // Swiping the app away from recents = leave the party.
-        stopRequestedListener?.invoke()
-        stopSelf()
+        // Swiping the app away from recents keeps the helper running;
+        // use "Leave" in the notification (or the app's Stop button) to turn it off.
         super.onTaskRemoved(rootIntent)
     }
 
@@ -158,7 +157,7 @@ class PartyService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notify)
-            .setContentTitle(if (router.helperMode) "Headset helper on (Xbox app)" else "Party chat mic active")
+            .setContentTitle("Headset helper on")
             .setContentText("Audio: $routeText")
             .setContentIntent(openApp)
             .setOngoing(true)
@@ -166,7 +165,7 @@ class PartyService : Service() {
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .addAction(0, "Fix audio", reroute)
-            .addAction(0, "Leave", leave)
+            .addAction(0, "Stop", leave)
             .build()
     }
 
